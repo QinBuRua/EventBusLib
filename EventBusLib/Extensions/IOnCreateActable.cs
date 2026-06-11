@@ -1,8 +1,8 @@
 ﻿using EventBusLib.Dependencies;
 
-namespace EventBusLib.Core;
+namespace EventBusLib.Extensions;
 
-public interface IOnCreateable
+public interface IOnCreateActable
 {
     public void OnCreate(GameTick nowTick);
 }

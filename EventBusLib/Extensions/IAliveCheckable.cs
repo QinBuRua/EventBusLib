@@ -1,6 +1,7 @@
-﻿using EventBusLib.Dependencies;
+﻿using EventBusLib.Core;
+using EventBusLib.Dependencies;
 
-namespace EventBusLib.Core;
+namespace EventBusLib.Extensions;
 
 public interface IAliveCheckable : IManaged
 {

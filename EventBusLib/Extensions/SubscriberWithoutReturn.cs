@@ -1,4 +1,6 @@
-﻿namespace EventBusLib.Core;
+﻿using EventBusLib.Core;
+
+namespace EventBusLib.Extensions;
 
 public abstract class SubscriberWithoutReturn<TEvent> : ISubscriber
     where TEvent : Event

@@ -1,11 +1,13 @@
-﻿using EventBusLib.Dependencies;
+﻿using System.Diagnostics.CodeAnalysis;
+using EventBusLib.Dependencies;
+using EventBusLib.Extensions;
 using EventBusLib.Utils;
 
 namespace EventBusLib.Core;
 
 public class EventBus
 {
-    public uint MaxProcessCount
+    public uint DefaultMaxPushEventCount
     {
         get;
         set => field = value > 0
@@ -84,6 +86,7 @@ public class EventBus
         RemoveSubscriberIfDead(nowTick);
         UpdateDelayQueue(nowTick);
         PushEventToSubscriberNow();
+        PushEventAtDeadline(nowTick);
     }
 
     private readonly WeakReference<EventBus> _weakSelf;
@@ -162,18 +165,67 @@ public class EventBus
         }
     }
 
-    private void PushEventToSubscriberNow(uint? maxProcessCount = null)
+    private void PushEventToSubscriberNow(uint? maxPushEventCount = null)
     {
-        maxProcessCount ??= MaxProcessCount;
+        maxPushEventCount ??= DefaultMaxPushEventCount;
 
-        for (var i = 0; i < maxProcessCount; i++)
+        for (var i = 0; i < maxPushEventCount && _eventAliveQueue.TryDequeue(out var @event, out _); i++)
         {
-            if (!_eventAliveQueue.TryPeek(out _, out _))
+            PushOneEventToSubscriberNow(@event);
+        }
+    }
+
+    private void PushEventAtDeadline(GameTick nowTick)
+    {
+        while (_eventAliveQueue.TryPeek(out var @event, out var deadlineTick) && deadlineTick >= nowTick)
+        {
+            _eventAliveQueue.Dequeue();
+            PushOneEventToSubscriberNow(@event);
+        }
+    }
+
+    private void PushOneEventToSubscriberNow(Event @event)
+    {
+        PushOneEventToSubscriberWithReturnNow(@event);
+        PushOneEventToSubscriberWithoutReturnNow(@event);
+    }
+
+    private void PushOneEventToSubscriberWithReturnNow(Event @event)
+    {
+        var eventType = @event.GetType();
+        if (!_weakSubscriberWithReturnDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
+        foreach (var weakSubscriber in weakSubscriberSet)
+        {
+            if (!UnpackWeakSubscriberOrRemove(weakSubscriber, out var subscriber))
             {
-                break;
+                continue;
             }
 
-            throw new NotImplementedException();
+            if (subscriber.HandelI(@event) == AliveStatus.Dead)
+            {
+                RemoveSubscriber(subscriber);
+            }
         }
+    }
+
+    private void PushOneEventToSubscriberWithoutReturnNow(Event @event)
+    {
+        var eventType = @event.GetType();
+        if (!_weakSubscriberWithoutReturnDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
+        foreach (var weakSubscriber in weakSubscriberSet)
+        {
+            if (!UnpackWeakSubscriberOrRemove(weakSubscriber, out var subscriber))
+            {
+                continue;
+            }
+
+            subscriber.HandelI(@event);
+        }
+    }
+
+    private bool UnpackWeakSubscriberOrRemove(WeakReference<ISubscriber> weakSubscriber,
+        [NotNullWhen(true)] out ISubscriber? subscriber)
+    {
+        return weakSubscriber.TryGetTarget(out subscriber);
     }
 }

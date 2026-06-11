@@ -1,5 +1,3 @@
 ﻿namespace EventBusLib.Core;
 
-public interface IManaged
-{
-}
+public interface IManaged;

@@ -1,8 +1,8 @@
 ﻿using EventBusLib.Dependencies;
 
-namespace EventBusLib.Core;
+namespace EventBusLib.Extensions;
 
-public interface IOnDestroyable
+public interface IOnDestroyActable
 {
     public void OnDestroy(GameTick nowTick);
 }
