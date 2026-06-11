@@ -83,7 +83,7 @@ public class EventBus
     {
         var nowTick = GameTick.Now();
 
-        RemoveSubscriberIfDead(nowTick);
+        CheckSubscriberAliveStatus(nowTick);
         UpdateDelayQueue(nowTick);
         PushEventToSubscriberNow();
         PushEventAtDeadline(nowTick);
@@ -143,7 +143,7 @@ public class EventBus
         value.Add(weakSubscriber);
     }
 
-    private void RemoveSubscriberIfDead(GameTick nowTick)
+    private void CheckSubscriberAliveStatus(GameTick nowTick)
     {
         foreach (var subscriber in _subscriberStrongRefSet)
         {
