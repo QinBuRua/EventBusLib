@@ -42,14 +42,7 @@ public class EventBus
         }
 
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
-        if (subscriber.HasReturn())
-        {
-            AddSubscriberToWeakSubscriberWithReturnDic(weakSubscriber, subscriber.GetEventType());
-        }
-        else
-        {
-            AddSubscriberToWeakSubscriberWithoutReturnDic(weakSubscriber, subscriber.GetEventType());
-        }
+        AddSubscriberToWeakSubscriberDic(weakSubscriber, subscriber.GetEventType());
 
         return new SubscriberToken()
         {
@@ -66,11 +59,8 @@ public class EventBus
         }
 
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
-        var subscriberDic = subscriber.HasReturn()
-            ? _weakSubscriberWithReturnDic
-            : _weakSubscriberWithoutReturnDic;
 
-        subscriberDic.TryGetValue(subscriber.GetEventType(), out var subscriberSet);
+        _weakSubscriberDic.TryGetValue(subscriber.GetEventType(), out var subscriberSet);
         if (subscriberSet is null || !subscriberSet.Contains(weakSubscriber))
         {
             throw new InvalidOperationException();
@@ -94,8 +84,7 @@ public class EventBus
     private readonly PriorityQueue<Event, GameTick> _eventDelayQueue = new();
     private readonly PriorityQueue<Event, GameTick> _eventAliveQueue = new();
 
-    private readonly Dictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberWithReturnDic = new();
-    private readonly Dictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberWithoutReturnDic = new();
+    private readonly Dictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberDic = new();
     private readonly HashSet<ISubscriber> _subscriberStrongRefSet = new(ReferenceComparer<ISubscriber>.Instance);
 
     public EventBus()
@@ -120,24 +109,12 @@ public class EventBus
     private static HashSet<WeakReference<ISubscriber>> GetEmptyWeakSubscriberSet()
         => new(WeakReferenceTargetRefComparer<ISubscriber>.Instance);
 
-    private void AddSubscriberToWeakSubscriberWithoutReturnDic(WeakReference<ISubscriber> weakSubscriber,
-        Type eventType)
+    private void AddSubscriberToWeakSubscriberDic(WeakReference<ISubscriber> weakSubscriber, Type eventType)
     {
-        if (!_weakSubscriberWithoutReturnDic.TryGetValue(eventType, out var value))
+        if (!_weakSubscriberDic.TryGetValue(eventType, out var value))
         {
             value = GetEmptyWeakSubscriberSet();
-            _weakSubscriberWithoutReturnDic[eventType] = value;
-        }
-
-        value.Add(weakSubscriber);
-    }
-
-    private void AddSubscriberToWeakSubscriberWithReturnDic(WeakReference<ISubscriber> weakSubscriber, Type eventType)
-    {
-        if (!_weakSubscriberWithReturnDic.TryGetValue(eventType, out var value))
-        {
-            value = GetEmptyWeakSubscriberSet();
-            _weakSubscriberWithReturnDic[eventType] = value;
+            _weakSubscriberDic[eventType] = value;
         }
 
         value.Add(weakSubscriber);
@@ -184,48 +161,14 @@ public class EventBus
         }
     }
 
-    private void PushOneEventToSubscriberNow(Event @event)
-    {
-        PushOneEventToSubscriberWithReturnNow(@event);
-        PushOneEventToSubscriberWithoutReturnNow(@event);
-    }
-
-    private void PushOneEventToSubscriberWithReturnNow(Event @event)
+    private void PushOneEventToSubscriberNow(Event @event)//todo
     {
         var eventType = @event.GetType();
-        if (!_weakSubscriberWithReturnDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
-        foreach (var weakSubscriber in weakSubscriberSet)
+        if (!_weakSubscriberDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
+        weakSubscriberSet.RemoveWhere(weakSubscriber =>
         {
-            if (!UnpackWeakSubscriberOrRemove(weakSubscriber, out var subscriber))
-            {
-                continue;
-            }
-
-            if (subscriber.HandelI(@event) == AliveStatus.Dead)
-            {
-                RemoveSubscriber(subscriber);
-            }
-        }
-    }
-
-    private void PushOneEventToSubscriberWithoutReturnNow(Event @event)
-    {
-        var eventType = @event.GetType();
-        if (!_weakSubscriberWithoutReturnDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
-        foreach (var weakSubscriber in weakSubscriberSet)
-        {
-            if (!UnpackWeakSubscriberOrRemove(weakSubscriber, out var subscriber))
-            {
-                continue;
-            }
-
-            subscriber.HandelI(@event);
-        }
-    }
-
-    private bool UnpackWeakSubscriberOrRemove(WeakReference<ISubscriber> weakSubscriber,
-        [NotNullWhen(true)] out ISubscriber? subscriber)
-    {
-        return weakSubscriber.TryGetTarget(out subscriber);
+            if (!weakSubscriber.TryGetTarget(out var subscriber)) return true;
+            return subscriber.HandelI(@event) == AliveStatus.Dead;
+        });
     }
 }
