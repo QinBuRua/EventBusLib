@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using EventBusLib.Dependencies;
+using EventBusLib.Exceptions;
 using EventBusLib.Extensions;
 using EventBusLib.Utils;
 
@@ -36,6 +37,8 @@ public class EventBus
 
     public SubscriberToken AddSubscriber(ISubscriber subscriber)
     {
+        var nowTick = GameTick.Now;
+
         if (subscriber is IManaged)
         {
             _subscriberStrongRefSet.Add(subscriber);
@@ -43,6 +46,22 @@ public class EventBus
 
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
         AddSubscriberToWeakSubscriberDic(weakSubscriber, subscriber.GetEventType());
+
+        try
+        {
+            if (subscriber is IOnCreateActable onCreateActable)
+            {
+                onCreateActable.OnCreate(nowTick);
+            }
+        }
+        catch (Exception e)//todo: innerException
+        {
+            throw new SubscriberOnCreateException()
+            {
+                Bus = this,
+                Subscriber = subscriber,
+            };
+        }
 
         return new SubscriberToken()
         {
