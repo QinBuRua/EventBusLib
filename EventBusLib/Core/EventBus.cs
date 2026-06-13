@@ -71,7 +71,7 @@ public class EventBus
 
     public void LoopOnce()
     {
-        var nowTick = GameTick.Now();
+        var nowTick = GameTick.Now;
 
         CheckSubscriberAliveStatus(nowTick);
         UpdateDelayQueue(nowTick);
@@ -161,7 +161,7 @@ public class EventBus
         }
     }
 
-    private void PushOneEventToSubscriberNow(Event @event)//todo
+    private void PushOneEventToSubscriberNow(Event @event) //todo
     {
         var eventType = @event.GetType();
         if (!_weakSubscriberDic.TryGetValue(eventType, out var weakSubscriberSet)) return;

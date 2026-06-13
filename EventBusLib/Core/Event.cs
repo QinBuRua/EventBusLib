@@ -8,7 +8,7 @@ public class Event
     {
         get;
         init => field = value >= 0 ? value : throw new ArgumentOutOfRangeException(nameof(value));
-    } = GameTick.Now();
+    } = GameTick.Now;
 
     public GameTick MaxDelay
     {

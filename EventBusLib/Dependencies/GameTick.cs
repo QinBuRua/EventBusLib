@@ -16,10 +16,7 @@ public struct GameTick : IComparable<GameTick>, IEquatable<GameTick>
         Ticks = DateTimeTicksToGameTicks(dateTime.Ticks - BeginTime.Ticks);
     }
 
-    public static GameTick Now()
-    {
-        return new GameTick(DateTime.Now);
-    }
+    public static GameTick Now => new(DateTime.Now);
 
     public static implicit operator GameTick(long ticks) => new(ticks);
     public static implicit operator long(in GameTick ticks) => ticks.Ticks;
