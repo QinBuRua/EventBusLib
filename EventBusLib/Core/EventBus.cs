@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using ConcurrentCollections;
 using EventBusLib.Dependencies;
 using EventBusLib.Exceptions;
 using EventBusLib.Extensions;
@@ -6,7 +7,7 @@ using EventBusLib.Utils;
 
 namespace EventBusLib.Core;
 
-public class EventBus
+public class EventBus //todo: 线程安全
 {
     public uint DefaultMaxPushEventCount
     {
@@ -72,9 +73,17 @@ public class EventBus
 
     public void RemoveSubscriber(ISubscriber subscriber)
     {
+        if (subscriber is IOnDestroyActable onDestroyActable)
+        {
+            onDestroyActable.OnDestroy(GameTick.Now);
+        }
+
         if (subscriber is IManaged)
         {
-            _subscriberStrongRefSet.Remove(subscriber);
+            if (!_subscriberStrongRefSet.TryRemove(subscriber))
+            {
+                throw new SubscriberNotFoundException(this, subscriber);
+            }
         }
 
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
@@ -82,11 +91,7 @@ public class EventBus
         _weakSubscriberDic.TryGetValue(subscriber.GetEventType(), out var subscriberSet);
         if (subscriberSet is null || !subscriberSet.Contains(weakSubscriber))
         {
-            throw new SubscriberNotFoundException()
-            {
-                Subscriber = subscriber,
-                Bus = this
-            };
+            throw new SubscriberNotFoundException(this, subscriber);
         }
 
         subscriberSet.Remove(weakSubscriber);
@@ -108,7 +113,9 @@ public class EventBus
     private readonly PriorityQueue<Event, GameTick> _eventAliveQueue = new();
 
     private readonly Dictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberDic = new();
-    private readonly HashSet<ISubscriber> _subscriberStrongRefSet = new(ReferenceComparer<ISubscriber>.Instance);
+
+    private readonly ConcurrentHashSet<ISubscriber> _subscriberStrongRefSet =
+        new(ReferenceComparer<ISubscriber>.Instance);
 
     public EventBus()
     {
@@ -184,14 +191,42 @@ public class EventBus
         }
     }
 
-    private void PushOneEventToSubscriberNow(Event @event) //todo
+    private void PushOneEventToSubscriberNow(Event @event)//todo 重构
     {
         var eventType = @event.GetType();
         if (!_weakSubscriberDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
+
         weakSubscriberSet.RemoveWhere(weakSubscriber =>
         {
             if (!weakSubscriber.TryGetTarget(out var subscriber)) return true;
-            return subscriber.HandelI(@event) == AliveStatus.Dead;
+            bool shouldRemove;
+            if (subscriber.HasReturn())
+            {
+                shouldRemove = subscriber.HandelI(@event)! == AliveStatus.Dead;
+            }
+            else
+            {
+                shouldRemove = subscriber.HandelI(@event) is null
+                    ? false
+                    : throw new InvalidOperationException();
+            }
+
+            if (!shouldRemove) return shouldRemove;
+
+            if (subscriber is IOnDestroyActable onDestroyActable)
+            {
+                onDestroyActable.OnDestroy(GameTick.Now);
+            }
+
+            if (subscriber is IManaged)
+            {
+                if (!_subscriberStrongRefSet.TryRemove(subscriber))
+                {
+                    throw new SubscriberNotFoundException(this, subscriber);//todo 危险的异常
+                }
+            }
+
+            return shouldRemove;
         });
     }
 }

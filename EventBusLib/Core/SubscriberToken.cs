@@ -1,7 +1,7 @@
 ﻿namespace EventBusLib.Core;
 
 public readonly record struct SubscriberToken(
-    WeakReference<EventBusLib.Core.EventBus> EventBus,
+    WeakReference<EventBus> EventBus,
     WeakReference<ISubscriber> Subscriber
 ) : IDisposable
 {
