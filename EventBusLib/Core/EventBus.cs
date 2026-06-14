@@ -82,7 +82,11 @@ public class EventBus
         _weakSubscriberDic.TryGetValue(subscriber.GetEventType(), out var subscriberSet);
         if (subscriberSet is null || !subscriberSet.Contains(weakSubscriber))
         {
-            throw new InvalidOperationException();
+            throw new SubscriberNotFoundException()
+            {
+                Subscriber = subscriber,
+                Bus = this
+            };
         }
 
         subscriberSet.Remove(weakSubscriber);
