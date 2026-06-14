@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using ConcurrentCollections;
 using EventBusLib.Dependencies;
@@ -71,30 +72,39 @@ public class EventBus //todo: 线程安全
         };
     }
 
-    public void RemoveSubscriber(ISubscriber subscriber)
+    public bool ContainsSubscriber(ISubscriber subscriber)
     {
-        if (subscriber is IOnDestroyActable onDestroyActable)
+        if (subscriber is IManaged && !_subscriberStrongRefSet.Contains(subscriber))
         {
-            onDestroyActable.OnDestroy(GameTick.Now);
+            return false;
         }
 
-        if (subscriber is IManaged)
-        {
-            if (!_subscriberStrongRefSet.TryRemove(subscriber))
-            {
-                throw new SubscriberNotFoundException(this, subscriber);
-            }
-        }
-
+        var eventType = subscriber.GetEventType();
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
+        return _weakSubscriberDic.TryGetValue(eventType, out var weakSubscriberSet)
+               && weakSubscriberSet.Contains(weakSubscriber);
+    }
 
-        _weakSubscriberDic.TryGetValue(subscriber.GetEventType(), out var subscriberSet);
-        if (subscriberSet is null || !subscriberSet.Contains(weakSubscriber))
+    public void RemoveSubscriber(ISubscriber subscriber) //todo 重构
+    {
+        if (!ContainsSubscriber(subscriber))
         {
             throw new SubscriberNotFoundException(this, subscriber);
         }
 
-        subscriberSet.Remove(weakSubscriber);
+        RemoveSubscriberAndActOnDestroy(subscriber);
+    }
+
+    public bool TryRemoveSubscriber(ISubscriber subscriber)
+    {
+        if (!ContainsSubscriber(subscriber))
+        {
+            return false;
+        }
+
+        RemoveSubscriberAndActOnDestroy(subscriber);
+
+        return true;
     }
 
     public void LoopOnce()
@@ -120,6 +130,34 @@ public class EventBus //todo: 线程安全
     public EventBus()
     {
         _weakSelf = new WeakReference<EventBus>(this);
+    }
+
+    /// <summary>
+    /// 只有在确保ContainsSubscriber成立时才能调用此函数，否则不保证结果
+    /// </summary>
+    /// <param name="subscriber"></param>
+    private void OnlyRemoveSubscriber(ISubscriber subscriber)
+    {
+        Debug.Assert(ContainsSubscriber(subscriber));
+
+        _subscriberStrongRefSet.TryRemove(subscriber);
+        _weakSubscriberDic.TryGetValue(subscriber.GetType(), out var weakSubscriberSet);
+        weakSubscriberSet!.Remove(new WeakReference<ISubscriber>(subscriber));
+    }
+
+    /// <summary>
+    /// 只有在确保ContainsSubscriber成立时才能调用此函数，否则不保证结果
+    /// 当实现IOnDestroyActable接口时会调用它
+    /// </summary>
+    /// <param name="subscriber"></param>
+    private void RemoveSubscriberAndActOnDestroy(ISubscriber subscriber)
+    {
+        Debug.Assert(ContainsSubscriber(subscriber));
+
+        if (subscriber is IOnDestroyActable onDestroyActable)
+        {
+            onDestroyActable.OnDestroy(GameTick.Now);
+        }
     }
 
     private void PushEventToAliveQueue<TEvent>(TEvent @event)
@@ -191,42 +229,41 @@ public class EventBus //todo: 线程安全
         }
     }
 
-    private void PushOneEventToSubscriberNow(Event @event)//todo 重构
+    private void PushOneEventToSubscriberNow(Event @event) //todo 重构
     {
-        var eventType = @event.GetType();
-        if (!_weakSubscriberDic.TryGetValue(eventType, out var weakSubscriberSet)) return;
+        if (!TryExtractSubscriberListWhileRemove(@event, out var subscriberList))
+        {
+            return;
+        }
+    }
 
+    private bool TryExtractSubscriberListWhileRemove(Event @event,
+        [NotNullWhen(true)] out List<ISubscriber>? subscriberList)
+    {
+        if (!_weakSubscriberDic.TryGetValue(@event.GetType(), out var weakSubscriberSet))
+        {
+            subscriberList = null;
+            return false;
+        }
+
+        var list = new List<ISubscriber>();
         weakSubscriberSet.RemoveWhere(weakSubscriber =>
         {
             if (!weakSubscriber.TryGetTarget(out var subscriber)) return true;
-            bool shouldRemove;
-            if (subscriber.HasReturn())
-            {
-                shouldRemove = subscriber.HandelI(@event)! == AliveStatus.Dead;
-            }
-            else
-            {
-                shouldRemove = subscriber.HandelI(@event) is null
-                    ? false
-                    : throw new InvalidOperationException();
-            }
 
-            if (!shouldRemove) return shouldRemove;
-
-            if (subscriber is IOnDestroyActable onDestroyActable)
-            {
-                onDestroyActable.OnDestroy(GameTick.Now);
-            }
-
-            if (subscriber is IManaged)
-            {
-                if (!_subscriberStrongRefSet.TryRemove(subscriber))
-                {
-                    throw new SubscriberNotFoundException(this, subscriber);//todo 危险的异常
-                }
-            }
-
-            return shouldRemove;
+            list.Add(subscriber);
+            return false;
         });
+
+        if (list.Count == 0)
+        {
+            subscriberList = null;
+            return false;
+        }
+        else
+        {
+            subscriberList = list;
+            return true;
+        }
     }
 }
