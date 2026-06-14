@@ -2,6 +2,8 @@
 
 public interface ISubscriber
 {
-    public AliveStatus? HandleI(Event @event);
+    public AliveStatus? HandelI(Event @event);
     public bool HasReturn();
+
+    public Type GetEventType();
 }
