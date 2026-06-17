@@ -108,11 +108,11 @@ public partial class EventBus
         return true;
     }
 
-    public partial void LoopOnce()
+    public partial void TryLoopOnce()//todo exception
     {
         var nowTick = GameTick.Now;
 
-        TryCheckSubscriberAliveStatus(nowTick);
+        TryCheckSubscriberAliveStatus(nowTick, out _);
         UpdateDelayQueue(nowTick);
         PushEventToSubscriberNow();
         PushEventAtDeadline(nowTick);
@@ -161,16 +161,48 @@ public partial class EventBus
         value.Add(weakSubscriber);
     }
 
-    private void TryCheckSubscriberAliveStatus(GameTick nowTick)
+    private record struct CheckAliveExceptionPair(Exception? OnCheckAliveException, Exception? OnDestroyException)
     {
+        public bool IsEmpty() => OnDestroyException is null && OnCheckAliveException is null;
+    }
+    
+    private bool TryCheckSubscriberAliveStatus(GameTick nowTick, [NotNullWhen(false)]out List<CheckAliveExceptionPair>? checkAliveExceptionPairs)
+    {
+        var list = new List<CheckAliveExceptionPair>();
+        
         foreach (var subscriber in _subscriberStrongRefSet)
         {
             if (subscriber is not IAliveCheckable subscriberCheckable) continue;
-
-            if (subscriberCheckable.CheckAlive(nowTick) == AliveStatus.Dead)
+            
+            var pair = new CheckAliveExceptionPair(null, null);
+            try
             {
-                TryRemoveSubscriber(subscriber, out _); //todo exception
+                if (subscriberCheckable.CheckAlive(nowTick) == AliveStatus.Dead)
+                {
+                    TryRemoveSubscriber(subscriber, out var exception); //todo exception
+                    pair.OnDestroyException = exception;
+                }
             }
+            catch (Exception e)
+            {
+                pair.OnCheckAliveException = e;
+            }
+
+            if (!pair.IsEmpty())
+            {
+                list.Add(pair);
+            }
+        }
+
+        if (list.Count==0)
+        {
+            checkAliveExceptionPairs = null;
+            return true;
+        }
+        else
+        {
+            checkAliveExceptionPairs = list;
+            return false;
         }
     }
 

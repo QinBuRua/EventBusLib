@@ -27,7 +27,7 @@ public partial class EventBus //todo: 线程安全
     
     public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? exception);
 
-    public partial void LoopOnce();
+    public partial void TryLoopOnce();
 
     public partial record struct EventCountSetting(long Delay, long Alive)
     {
