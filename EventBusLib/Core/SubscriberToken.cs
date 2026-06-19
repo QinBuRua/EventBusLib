@@ -12,6 +12,6 @@ public readonly record struct SubscriberToken(
             return;
         }
 
-        bus.RemoveSubscriber(subscriber);
+        bus.TryRemoveSubscriber(subscriber, out _); //todo exception
     }
 }
