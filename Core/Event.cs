@@ -1,8 +1,9 @@
-﻿using EventBusLib.Dependencies;
+﻿using ConcurrentPriorityQueue.Core;
+using EventBusLib.Dependencies;
 
 namespace EventBusLib.Core;
 
-public class Event
+public partial record Event : IHavePriority<GameTick>
 {
     public GameTick CreateTime
     {
@@ -27,4 +28,6 @@ public class Event
         get;
         set => field = value >= 0 ? value : throw new ArgumentOutOfRangeException(nameof(value));
     } = 10;
+
+    public GameTick Priority { get; init; } = GameTick.Now;
 }

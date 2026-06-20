@@ -1,6 +1,7 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using ConcurrentCollections;
+using ConcurrentPriorityQueue.Core;
 using EventBusLib.Dependencies;
 using EventBusLib.Exceptions;
 using EventBusLib.Extensions;
@@ -12,8 +13,8 @@ public partial class EventBus
 {
     public partial void Clear()
     {
-        _eventAliveQueue.Clear();
-        _eventDelayQueue.Clear();
+        _eventAliveQueue = new ConcurrentPriorityQueue<Event, GameTick>();
+        _eventDelayQueue = new ConcurrentPriorityQueue<Event, GameTick>();
         _subscriberStrongRefSet.Clear();
         _weakSubscriberDic.Clear();
     }
@@ -115,10 +116,10 @@ public partial class EventBus
 
     private readonly WeakReference<EventBus> _weakSelf;
 
-    private readonly PriorityQueue<Event, GameTick> _eventDelayQueue = new();
-    private readonly PriorityQueue<Event, GameTick> _eventAliveQueue = new();
+    private ConcurrentPriorityQueue<Event, GameTick> _eventDelayQueue = new();
+    private ConcurrentPriorityQueue<Event, GameTick> _eventAliveQueue = new();
 
-    private readonly Dictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberDic = new();
+    private readonly ConcurrentDictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberDic = new();
 
     private readonly ConcurrentHashSet<ISubscriber> _subscriberStrongRefSet =
         new(ReferenceComparer<ISubscriber>.Instance);
@@ -132,14 +133,14 @@ public partial class EventBus
         where TEvent : Event
     {
         var deadlineTick = @event.CreateTime + @event.MaxDelay;
-        _eventAliveQueue.Enqueue(@event, deadlineTick);
+        _eventAliveQueue.Enqueue(@event with { Priority = deadlineTick });
     }
 
     private void PushEventToDelayQueue<TEvent>(TEvent @event)
         where TEvent : Event
     {
         var deadlineTick = @event.CreateTime + @event.PushDelay;
-        _eventDelayQueue.Enqueue(@event, deadlineTick);
+        _eventDelayQueue.Enqueue(@event with { Priority = deadlineTick });
     }
 
     private static HashSet<WeakReference<ISubscriber>> GetEmptyWeakSubscriberSet()
