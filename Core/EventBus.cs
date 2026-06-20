@@ -25,15 +25,7 @@ public partial class EventBus //todo: 线程安全
         public partial bool TryGetOnHandleExceptions(out List<SubscriberTokenExceptionPair>? onHandleExceptions);
         public partial bool TryGetOnDestroyExceptions(out List<SubscriberTokenExceptionPair>? onDestroyExceptions);
     }
-
-    /// <summary>
-    /// Check whether the subscriber exists in this EventBus.
-    /// </summary>
-    /// <param name="subscriber">the subscriber you want to check, can be null.</param>
-    /// <returns>
-    /// <c>true</c> means it exists.
-    /// <c>false</c> means it does NOT exist, or <paramref name="subscriber"/> is null.
-    /// </returns>
+    
     public partial bool ContainsSubscriber(ISubscriber subscriber);
 
     public partial void PushEvent<TEvent>(TEvent @event)
