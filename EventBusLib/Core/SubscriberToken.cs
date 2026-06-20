@@ -5,6 +5,11 @@ public readonly record struct SubscriberToken(
     WeakReference<ISubscriber> Subscriber
 ) : IDisposable
 {
+    public SubscriberToken(EventBus bus, ISubscriber subscriber)
+        : this(new WeakReference<EventBus>(bus), new WeakReference<ISubscriber>(subscriber))
+    {
+    }
+
     public void Dispose()
     {
         if (!EventBus.TryGetTarget(out var bus) || !Subscriber.TryGetTarget(out var subscriber))

@@ -1,10 +1,4 @@
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using ConcurrentCollections;
-using EventBusLib.Dependencies;
-using EventBusLib.Exceptions;
-using EventBusLib.Extensions;
-using EventBusLib.Utils;
 
 namespace EventBusLib.Core;
 
@@ -17,6 +11,20 @@ public partial class EventBus //todo: 线程安全
     public partial void Clear();
     public partial long SubscriberCount { get; }
     public partial EventCountSetting EventCount { get; }
+
+    public record struct SubscriberTokenExceptionPair(SubscriberToken SubscriberToken, Exception Exception);
+
+    public partial record struct OnLoopExceptionSettings(
+        List<SubscriberTokenExceptionPair>? OnCheckAliveExceptions,
+        List<SubscriberTokenExceptionPair>? OnHandleExceptions,
+        List<SubscriberTokenExceptionPair>? OnDestroyExceptions)
+    {
+        public partial bool IsEmpty();
+
+        public partial bool TryGetOnCheckAliveExceptions(out List<SubscriberTokenExceptionPair>? onCheckAliveExceptions);
+        public partial bool TryGetOnHandleExceptions(out List<SubscriberTokenExceptionPair>? onHandleExceptions);
+        public partial bool TryGetOnDestroyExceptions(out List<SubscriberTokenExceptionPair>? onDestroyExceptions);
+    }
 
     /// <summary>
     /// Check whether the subscriber exists in this EventBus.
@@ -32,10 +40,9 @@ public partial class EventBus //todo: 线程安全
         where TEvent : Event;
 
     public partial SubscriberToken AddSubscriber(ISubscriber subscriber);
-    
+
     public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? exception);
 
-    public partial void TryLoopOnce();
 
     public partial record struct EventCountSetting(long Delay, long Alive)
     {
