@@ -293,6 +293,11 @@ public partial class EventBus
     {
         return LoopOnceHelper.TryLoopOnce(nowTick, this, out onLoopExceptions);
     }
+
+    public partial void DisposeSubscriber(ISubscriber subscriber)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 public partial class EventBus

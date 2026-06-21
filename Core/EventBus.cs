@@ -43,6 +43,7 @@ public partial class EventBus //todo: 线程安全
     public partial SubscriberToken AddSubscriber(ISubscriber subscriber);
 
     public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? onDestroyException);
+    public partial void DisposeSubscriber(ISubscriber subscriber);
 
     /// <summary>
     /// Attempts to execute a single processing loop iteration for the event bus up to the specified game tick.
