@@ -153,7 +153,7 @@ public partial class EventBus
 
     private record struct CheckAliveExceptionPair(Exception? OnCheckAliveException, Exception? OnDestroyException)
     {
-        public bool IsEmpty() => OnDestroyException is null && OnCheckAliveException is null;
+        public readonly bool IsEmpty() => OnDestroyException is null && OnCheckAliveException is null;
     }
 
     public partial uint DefaultMaxPushEventCount
