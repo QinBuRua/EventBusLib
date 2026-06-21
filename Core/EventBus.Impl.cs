@@ -34,8 +34,6 @@ public partial class EventBus
 
     public partial SubscriberToken AddSubscriber(ISubscriber subscriber)
     {
-        var nowTick = GameTick.Now;
-
         if (subscriber is IManaged)
         {
             _subscriberStrongRefSet.Add(subscriber);
@@ -44,6 +42,7 @@ public partial class EventBus
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
         AddSubscriberToWeakSubscriberDic(weakSubscriber, subscriber.GetEventType());
 
+        var nowTick = GameTick.Now;
         try
         {
             if (subscriber is IOnCreateActable onCreateActable)
