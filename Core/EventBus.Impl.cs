@@ -79,9 +79,20 @@ public partial class EventBus
                && weakSubscriberSet.Contains(weakSubscriber);
     }
 
-    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? exception)
+    /// <summary>
+    /// Attempts to remove a subscriber from the event bus.
+    /// </summary>
+    /// <param name="subscriber">The subscriber instance to remove.</param>
+    /// <param name="onDestroyException">
+    /// When this method returns <c>true</c>, contains any exception thrown during invocation of <see cref="IOnDestroyActable.OnDestroy"/> if the subscriber implements that interface; otherwise, <c>null</c>.
+    /// When this method returns <c>false</c>, this parameter is always <c>null</c>.
+    /// </param>
+    /// <returns>
+    /// <c>true</c> if the subscriber existed and was successfully removed from the weak subscriber collection for its type; otherwise, <c>false</c>.
+    /// </returns>
+    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? onDestroyException)
     {
-        exception = null;
+        onDestroyException = null;
 
         _subscriberStrongRefSet.TryRemove(subscriber);
 
@@ -102,7 +113,7 @@ public partial class EventBus
         }
         catch (Exception e)
         {
-            exception = e;
+            onDestroyException = e;
         }
 
         return true;
@@ -182,7 +193,7 @@ public partial class EventBus
 
     public partial record struct OnLoopExceptionSettings
     {
-        public partial bool IsEmpty()
+        public readonly partial bool IsEmpty()
         {
             return
                 (OnCheckAliveExceptions is null || OnCheckAliveExceptions.Count <= 0)
@@ -225,6 +236,62 @@ public partial class EventBus
             onDestroyExceptions = null;
             return false;
         }
+
+        public partial void AddOnCheckAliveException(SubscriberTokenExceptionPair exceptionPair)
+        {
+            OnCheckAliveExceptions ??= [];
+            OnCheckAliveExceptions.Add(exceptionPair);
+        }
+
+        public partial void AddOnHandleException(SubscriberTokenExceptionPair exceptionPair)
+        {
+            OnHandleExceptions ??= [];
+            OnHandleExceptions.Add(exceptionPair);
+        }
+
+        public partial void AddOnDestroyException(SubscriberTokenExceptionPair exceptionPair)
+        {
+            OnDestroyExceptions ??= [];
+            OnDestroyExceptions.Add(exceptionPair);
+        }
+
+        public partial void AddRangeOnCheckAliveExceptions(List<SubscriberTokenExceptionPair>? exceptionPairs)
+        {
+            if (exceptionPairs is null || exceptionPairs.Count <= 0)
+            {
+                return;
+            }
+
+            OnCheckAliveExceptions ??= [];
+            OnCheckAliveExceptions.AddRange(exceptionPairs);
+        }
+
+        public partial void AddRangeOnHandleExceptions(List<SubscriberTokenExceptionPair>? exceptionPairs)
+        {
+            if (exceptionPairs is null || exceptionPairs.Count <= 0)
+            {
+                return;
+            }
+
+            OnHandleExceptions ??= [];
+            OnHandleExceptions.AddRange(exceptionPairs);
+        }
+
+        public partial void AddRangeOnDestroyExceptions(List<SubscriberTokenExceptionPair>? exceptionPairs)
+        {
+            if (exceptionPairs is null || exceptionPairs.Count <= 0)
+            {
+                return;
+            }
+
+            OnDestroyExceptions ??= [];
+            OnDestroyExceptions.AddRange(exceptionPairs);
+        }
+    }
+
+    public partial bool TryLoopOnce(GameTick nowTick, out OnLoopExceptionSettings? onLoopExceptions)
+    {
+        return LoopOnceHelper.TryLoopOnce(nowTick, this, out onLoopExceptions);
     }
 }
 
@@ -258,9 +325,10 @@ public partial class EventBus
         /// <c>true</c> if the loop iteration completed without exceptions; otherwise, <c>false</c>.
         /// </returns>
         public static bool TryLoopOnce(GameTick nowTick, EventBus eventBus,
-            [NotNullWhen(false)] out OnLoopExceptionSettings? exceptions) //todo
+            [NotNullWhen(false)] out OnLoopExceptionSettings? exceptions)
         {
             var helper = new LoopOnceHelper(nowTick, eventBus);
+            helper.LoopOnce();
 
             if (helper._exceptions.IsEmpty())
             {
@@ -287,12 +355,58 @@ public partial class EventBus
         private void LoopOnce()
         {
             CheckAliveStatus();
+            UpdateDelayQueue();
+            PushEventsToSubscribers(); //todo MaxProcess
+
+
+            ClearWeakSubscribers();
+        }
+
+        private void ClearWeakSubscribers()
+        {
+            var weakDic = _busInstance._weakSubscriberDic;
+            foreach (var (_, weakSet) in weakDic)
+            {
+                weakSet.RemoveWhere(weak => !weak.TryGetTarget(out _));
+            }
+        }
+
+        private bool TryRemoveSubscribers(List<ISubscriber> subscribers,
+            [NotNullWhen(false)] out List<SubscriberTokenExceptionPair>? onDestroyExceptions)
+        {
+            if (subscribers.Count <= 0)
+            {
+                onDestroyExceptions = null;
+                return true;
+            }
+
+            onDestroyExceptions = [];
+            foreach (var subscriber in subscribers)
+            {
+                _busInstance.TryRemoveSubscriber(subscriber, out var onDestroyException);
+                if (onDestroyException is null)
+                {
+                    continue;
+                }
+
+                onDestroyExceptions.Add(new(new(_busInstance, subscriber), onDestroyException));
+            }
+
+            if (onDestroyExceptions.Count <= 0)
+            {
+                onDestroyExceptions = null;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
 
         private void CheckAliveStatus()
         {
-            var onCheckAliveExceptions = _exceptions.OnCheckAliveExceptions!;
-            var onDestroyExceptions = _exceptions.OnDestroyExceptions!;
+            var removeList = new List<ISubscriber>();
+
             foreach (var subscriber in _busInstance._subscriberStrongRefSet)
             {
                 if (subscriber is not IAliveCheckable aliveChecker)
@@ -302,29 +416,92 @@ public partial class EventBus
 
                 try
                 {
-                    var aliveStatus = aliveChecker.CheckAlive(_nowTick);
-
-                    if (aliveStatus == AliveStatus.Alive)
+                    if (aliveChecker.CheckAlive(_nowTick) == AliveStatus.Dead)
                     {
-                        continue;
-                    }
-
-                    _busInstance.TryRemoveSubscriber(subscriber, out var onDestroyException);
-                    if (onDestroyException is not null)
-                    {
-                        onCheckAliveExceptions.Add(new SubscriberTokenExceptionPair(
-                            new SubscriberToken(_busInstance, subscriber),
-                            onDestroyException)
-                        );
+                        removeList.Add(subscriber);
                     }
                 }
                 catch (Exception onCheckAliveException)
                 {
-                    onDestroyExceptions.Add(new SubscriberTokenExceptionPair(
+                    _exceptions.AddOnCheckAliveException(new SubscriberTokenExceptionPair(
                         new SubscriberToken(_busInstance, subscriber),
                         onCheckAliveException)
                     );
                 }
+            }
+
+            if (!TryRemoveSubscribers(removeList, out var exceptionPairs))
+            {
+                _exceptions.AddRangeOnCheckAliveExceptions(exceptionPairs);
+            }
+        }
+
+        private void UpdateDelayQueue()
+        {
+            var delayQueue = _busInstance._eventDelayQueue;
+            var aliveQueue = _busInstance._eventAliveQueue;
+
+            while (delayQueue.Peek().TryGetValue(out var delayEvent) && delayEvent.Priority >= _nowTick)
+            {
+                var newDeadline = delayEvent.CreateTime + delayEvent.PushDelay + delayEvent.MaxDelay;
+                aliveQueue.Enqueue(delayEvent with { Priority = newDeadline });
+            }
+        }
+
+        private void PushEventsToSubscribers()
+        {
+            var aliveQueue = _busInstance._eventAliveQueue;
+
+            while (aliveQueue.Peek().TryGetValue(out var @event))
+            {
+                PushOneEventToSubscribers(@event);
+            }
+        }
+
+        private void ForcePushEventsInDeadlineToSubscribers()
+        {
+            throw new NotImplementedException();
+        }
+
+        private void PushOneEventToSubscribers(Event @event)
+        {
+            if (!_busInstance._weakSubscriberDic.TryGetValue(@event.GetType(), out var weakSet) || weakSet.Count <= 0)
+            {
+                return;
+            }
+
+            var removeList = new List<ISubscriber>();
+            foreach (var weakSubscriber in weakSet)
+            {
+                if (!weakSubscriber.TryGetTarget(out var subscriber))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (!subscriber.HasReturn())
+                    {
+                        subscriber.HandelI(@event);
+                        continue;
+                    }
+
+                    var result = subscriber.HandelI(@event)!;
+                    if (result == AliveStatus.Dead)
+                    {
+                        removeList.Add(subscriber);
+                    }
+                }
+                catch (Exception e)
+                {
+                    _exceptions.AddOnHandleException(new SubscriberTokenExceptionPair(
+                        new SubscriberToken(_busInstance, subscriber), e));
+                }
+            }
+
+            if (!TryRemoveSubscribers(removeList, out var onDestroyExceptions))
+            {
+                _exceptions.AddRangeOnDestroyExceptions(onDestroyExceptions);
             }
         }
     }
