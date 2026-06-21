@@ -68,11 +68,6 @@ public partial class EventBus
 
     public partial bool ContainsSubscriber(ISubscriber subscriber)
     {
-        if (subscriber is null)
-        {
-            return false;
-        }
-
         if (subscriber is IManaged && !_subscriberStrongRefSet.Contains(subscriber))
         {
             return false;
