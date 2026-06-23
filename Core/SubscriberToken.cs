@@ -14,5 +14,5 @@ public readonly partial record struct SubscriberToken(
 
     public partial bool IsAvailable { get; }
     public partial void Dispose();
-    public partial bool TryGetBusAndSubscriber([NotNullWhen(true)]out EventBus? eventBus,[NotNullWhen(true)] out ISubscriber? subscriber);
+    public partial bool TryGetBusAndSubscriber([NotNullWhen(true)] out EventBus? eventBus, [NotNullWhen(true)] out ISubscriber? subscriber);
 }

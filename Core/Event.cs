@@ -3,7 +3,7 @@ using EventBusLib.Dependencies;
 
 namespace EventBusLib.Core;
 
-public partial record Event : IHavePriority<GameTick>
+public record Event : IHavePriority<GameTick>
 {
     public GameTick CreateTime
     {

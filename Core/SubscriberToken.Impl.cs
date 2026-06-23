@@ -1,21 +1,16 @@
-﻿using System.Diagnostics.CodeAnalysis;
-
-namespace EventBusLib.Core;
+﻿namespace EventBusLib.Core;
 
 public partial record struct SubscriberToken
 {
+    public partial bool IsAvailable
+        => EventBus.TryGetTarget(out _) && Subscriber.TryGetTarget(out _);
+
     public partial void Dispose()
     {
-        if (!EventBus.TryGetTarget(out var bus) || !Subscriber.TryGetTarget(out var subscriber))
-        {
-            return;
-        }
+        if (!EventBus.TryGetTarget(out var bus) || !Subscriber.TryGetTarget(out var subscriber)) return;
 
         bus.TryRemoveSubscriber(subscriber, out _); //todo exception
     }
-
-    public partial bool IsAvailable
-        => EventBus.TryGetTarget(out _) && Subscriber.TryGetTarget(out _);
 
     public partial bool TryGetBusAndSubscriber(out EventBus? eventBus, out ISubscriber? subscriber)
     {

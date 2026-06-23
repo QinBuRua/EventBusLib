@@ -1,5 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using EventBusLib.Core;
+﻿using EventBusLib.Core;
 
 namespace EventBusLib.Exceptions;
 

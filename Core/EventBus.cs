@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using EventBusLib.Dependencies;
 using EventBusLib.Exceptions;
 
@@ -9,13 +8,11 @@ public partial class EventBus //todo: 线程安全
     public partial EventBus();
 
     public partial uint DefaultMaxPushEventCount { get; set; } = 32;
-
-    public partial void Clear();
     public partial long SubscriberCount { get; }
     public partial EventCountSetting EventCount { get; }
 
-    public record struct SubscriberTokenExceptionPair(SubscriberToken SubscriberToken, Exception Exception);
-    
+    public partial void Clear();
+
     public partial bool ContainsSubscriber(ISubscriber subscriber);
 
     public partial void PushEvent<TEvent>(TEvent @event)
@@ -27,12 +24,20 @@ public partial class EventBus //todo: 线程安全
     public partial void DisposeSubscriber(ISubscriber subscriber);
 
     /// <summary>
-    /// Attempts to execute a single processing loop iteration for the event bus up to the specified game tick.
+    ///     Attempts to execute a single processing loop iteration for the event bus up to the specified game tick.
     /// </summary>
     /// <param name="nowTick">The current game tick to use for determining which events to process.</param>
-    /// <param name="subscriberInnerExceptions">When this method returns <c>false</c>, contains any exceptions that occurred during the loop execution; otherwise, <c>null</c>.</param>
-    /// <returns><c>true</c> if the loop completed without exceptions; otherwise, <c>false</c> and exceptions are provided via <paramref name="subscriberInnerExceptions"/>.</returns>
+    /// <param name="subscriberInnerExceptions">
+    ///     When this method returns <c>false</c>, contains any exceptions that occurred
+    ///     during the loop execution; otherwise, <c>null</c>.
+    /// </param>
+    /// <returns>
+    ///     <c>true</c> if the loop completed without exceptions; otherwise, <c>false</c> and exceptions are provided via
+    ///     <paramref name="subscriberInnerExceptions" />.
+    /// </returns>
     public partial bool TryLoopOnce(GameTick nowTick, out List<SubscriberInnerException> subscriberInnerExceptions);
+
+    public record struct SubscriberTokenExceptionPair(SubscriberToken SubscriberToken, Exception Exception);
 
 
     public partial record struct EventCountSetting(long Delay, long Alive)
