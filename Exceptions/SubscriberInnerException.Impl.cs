@@ -5,5 +5,5 @@ namespace EventBusLib.Exceptions;
 
 public partial class SubscriberInnerException
 {
-    public partial SubscriberToken GetToken => new SubscriberToken(Bus,Subscriber);
+    public partial SubscriberToken GetToken => new SubscriberToken(Bus, Subscriber);
 }
