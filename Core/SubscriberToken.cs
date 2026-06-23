@@ -1,6 +1,8 @@
-﻿namespace EventBusLib.Core;
+﻿using System.Diagnostics.CodeAnalysis;
 
-public readonly record struct SubscriberToken(
+namespace EventBusLib.Core;
+
+public readonly partial record struct SubscriberToken(
     WeakReference<EventBus> EventBus,
     WeakReference<ISubscriber> Subscriber
 ) : IDisposable
@@ -10,13 +12,7 @@ public readonly record struct SubscriberToken(
     {
     }
 
-    public void Dispose()
-    {
-        if (!EventBus.TryGetTarget(out var bus) || !Subscriber.TryGetTarget(out var subscriber))
-        {
-            return;
-        }
-
-        bus.TryRemoveSubscriber(subscriber, out _); //todo exception
-    }
+    public partial bool IsAvailable { get; }
+    public partial void Dispose();
+    public partial bool TryGetBusAndSubscriber([NotNullWhen(true)]out EventBus? eventBus,[NotNullWhen(true)] out ISubscriber? subscriber);
 }
