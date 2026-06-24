@@ -235,8 +235,8 @@ public partial class EventBus
         {
             CheckAliveStatus();
             UpdateDelayQueue();
-            PushEventsToSubscribers(); //todo MaxProcess
-
+            PushEventsToSubscribers();
+            ForcePushEventsInDeadlineToSubscribers();
 
             ClearWeakSubscribers();
         }
@@ -312,13 +312,26 @@ public partial class EventBus
         private void PushEventsToSubscribers()
         {
             var aliveQueue = eventBus._eventAliveQueue;
+            var maxProcessCount = eventBus.DefaultMaxPushEventCount;
 
-            while (aliveQueue.Peek().TryGetValue(out var @event)) PushOneEventToSubscribers(@event);
+            var i = 0;
+            while (i < maxProcessCount && aliveQueue.Peek().TryGetValue(out var @event))
+            {
+                i++;
+                PushOneEventToSubscribers(@event);
+            }
         }
 
         private void ForcePushEventsInDeadlineToSubscribers()
         {
-            throw new NotImplementedException();
+            var eventQueue = eventBus._eventAliveQueue;
+
+            while (eventQueue.Peek().TryGetValue(out var @event)
+                   && @event.Priority > nowTick)
+            {
+                eventQueue.Dequeue();
+                PushOneEventToSubscribers(@event);
+            }
         }
 
         private void PushOneEventToSubscribers(Event @event)
