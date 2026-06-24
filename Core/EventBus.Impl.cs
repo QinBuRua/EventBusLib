@@ -266,13 +266,13 @@ public partial class EventBus
                     { Bus = eventBus, Subscriber = subscriber });
             }
 
-            if (onDestroyExceptions.Count <= 0)
+            if (onDestroyExceptions.Count > 0)
             {
-                onDestroyExceptions = null;
-                return true;
+                return false;
             }
 
-            return false;
+            onDestroyExceptions = null;
+            return true;
         }
 
         private void CheckAliveStatus()
