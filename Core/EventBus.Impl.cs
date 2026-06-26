@@ -115,7 +115,7 @@ public partial class EventBus
     ///     <c>true</c> if the subscriber existed and was successfully removed from the weak subscriber collection for its
     ///     type; otherwise, <c>false</c>.
     /// </returns>
-    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? onDestroyException)
+    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out SubscriberOnDestroyException? onDestroyException)
     {
         onDestroyException = null;
 
@@ -133,7 +133,8 @@ public partial class EventBus
         }
         catch (Exception e)
         {
-            onDestroyException = e;
+            onDestroyException = new SubscriberOnDestroyException(e)
+                { Bus = this, Subscriber = subscriber };
         }
 
         return true;
@@ -177,7 +178,11 @@ public partial class EventBus
 
     public partial void DisposeSubscriber(ISubscriber subscriber)
     {
-        throw new NotImplementedException();
+        TryRemoveSubscriber(subscriber, out var onDestroyException);
+        if (onDestroyException is not null)
+        {
+            UnhandledException.Add(onDestroyException);
+        }
     }
 }
 

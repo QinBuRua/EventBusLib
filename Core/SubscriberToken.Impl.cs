@@ -9,7 +9,7 @@ public partial record struct SubscriberToken
     {
         if (!EventBus.TryGetTarget(out var bus) || !Subscriber.TryGetTarget(out var subscriber)) return;
 
-        bus.TryRemoveSubscriber(subscriber, out _); //todo exception
+        bus.DisposeSubscriber(subscriber);
     }
 
     public partial bool TryGetBusAndSubscriber(out EventBus? eventBus, out ISubscriber? subscriber)

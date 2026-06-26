@@ -1,3 +1,4 @@
+using ConcurrentCollections;
 using EventBusLib.Dependencies;
 using EventBusLib.Exceptions;
 
@@ -10,6 +11,7 @@ public partial class EventBus //todo: 线程安全
     public partial uint DefaultMaxPushEventCount { get; set; } = 32;
     public partial long SubscriberCount { get; }
     public partial EventCountSetting EventCount { get; }
+    public ConcurrentHashSet<SubscriberInnerException> UnhandledException { get; private set; } = [];
 
     public partial void Clear();
 
@@ -20,7 +22,7 @@ public partial class EventBus //todo: 线程安全
 
     public partial SubscriberToken AddSubscriber(ISubscriber subscriber);
 
-    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? onDestroyException);
+    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out SubscriberOnDestroyException? onDestroyException);
     public partial void DisposeSubscriber(ISubscriber subscriber);
 
     /// <summary>
