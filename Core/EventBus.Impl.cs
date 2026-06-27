@@ -11,6 +11,42 @@ namespace EventBusLib.Core;
 
 public partial class EventBus
 {
+    private readonly ConcurrentHashSet<ISubscriber> _subscriberStrongRefSet =
+        new(ReferenceComparer<ISubscriber>.Instance);
+
+    private readonly WeakReference<EventBus> _weakSelf;
+
+    private readonly ConcurrentDictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberDic = new();
+    private ConcurrentPriorityQueue<Event, GameTick> _eventAliveQueue = new();
+
+    private ConcurrentPriorityQueue<Event, GameTick> _eventDelayQueue = new();
+
+    public partial EventBus()
+    {
+        _weakSelf = new WeakReference<EventBus>(this);
+    }
+
+    public partial uint DefaultMaxPushEventCount
+    {
+        get;
+        set => field = value > 0
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(value), $"{nameof(value)} must be greater than 0");
+    }
+
+    public partial long SubscriberCount
+    {
+        get
+        {
+            long count = 0;
+            foreach (var (_, weakSet) in _weakSubscriberDic) count += weakSet.Count;
+
+            return count;
+        }
+    }
+
+    public partial EventCountSetting EventCount => new(_eventDelayQueue.Count, _eventAliveQueue.Count);
+
     public partial void Clear()
     {
         _eventAliveQueue = new ConcurrentPriorityQueue<Event, GameTick>();
@@ -23,21 +59,14 @@ public partial class EventBus
         where TEvent : Event
     {
         if (@event.PushDelay == 0)
-        {
             PushEventToAliveQueue(@event);
-        }
         else
-        {
             PushEventToDelayQueue(@event);
-        }
     }
 
     public partial SubscriberToken AddSubscriber(ISubscriber subscriber)
     {
-        if (subscriber is IManaged)
-        {
-            _subscriberStrongRefSet.Add(subscriber);
-        }
+        if (subscriber is IManaged) _subscriberStrongRefSet.Add(subscriber);
 
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
         AddSubscriberToWeakSubscriberDic(weakSubscriber, subscriber.GetEventType());
@@ -45,33 +74,27 @@ public partial class EventBus
         var nowTick = GameTick.Now;
         try
         {
-            if (subscriber is IOnCreateActable onCreateActable)
-            {
-                onCreateActable.OnCreate(nowTick);
-            }
+            if (subscriber is IOnCreateActable onCreateActable) onCreateActable.OnCreate(nowTick);
         }
         catch (Exception e)
         {
             throw new SubscriberOnCreateException(e)
             {
                 Bus = this,
-                Subscriber = subscriber,
+                Subscriber = subscriber
             };
         }
 
-        return new SubscriberToken()
+        return new SubscriberToken
         {
             EventBus = _weakSelf,
-            Subscriber = weakSubscriber,
+            Subscriber = weakSubscriber
         };
     }
 
     public partial bool ContainsSubscriber(ISubscriber subscriber)
     {
-        if (subscriber is IManaged && !_subscriberStrongRefSet.Contains(subscriber))
-        {
-            return false;
-        }
+        if (subscriber is IManaged && !_subscriberStrongRefSet.Contains(subscriber)) return false;
 
         var eventType = subscriber.GetEventType();
         var weakSubscriber = new WeakReference<ISubscriber>(subscriber);
@@ -80,17 +103,19 @@ public partial class EventBus
     }
 
     /// <summary>
-    /// Attempts to remove a subscriber from the event bus.
+    ///     Attempts to remove a subscriber from the event bus.
     /// </summary>
     /// <param name="subscriber">The subscriber instance to remove.</param>
     /// <param name="onDestroyException">
-    /// When this method returns <c>true</c>, contains any exception thrown during invocation of <see cref="IOnDestroyActable.OnDestroy"/> if the subscriber implements that interface; otherwise, <c>null</c>.
-    /// When this method returns <c>false</c>, this parameter is always <c>null</c>.
+    ///     When this method returns <c>true</c>, contains any exception thrown during invocation of
+    ///     <see cref="IOnDestroyActable.OnDestroy" /> if the subscriber implements that interface; otherwise, <c>null</c>.
+    ///     When this method returns <c>false</c>, this parameter is always <c>null</c>.
     /// </param>
     /// <returns>
-    /// <c>true</c> if the subscriber existed and was successfully removed from the weak subscriber collection for its type; otherwise, <c>false</c>.
+    ///     <c>true</c> if the subscriber existed and was successfully removed from the weak subscriber collection for its
+    ///     type; otherwise, <c>false</c>.
     /// </returns>
-    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out Exception? onDestroyException)
+    public partial bool TryRemoveSubscriber(ISubscriber subscriber, out SubscriberOnDestroyException? onDestroyException)
     {
         onDestroyException = null;
 
@@ -98,14 +123,9 @@ public partial class EventBus
 
         if (!_weakSubscriberDic.TryGetValue(subscriber.GetType(), out var weakSubscriberSet)
             || !weakSubscriberSet.Remove(new WeakReference<ISubscriber>(subscriber)))
-        {
             return false;
-        }
 
-        if (subscriber is not IOnDestroyActable onDestroyActor)
-        {
-            return true;
-        }
+        if (subscriber is not IOnDestroyActable onDestroyActor) return true;
 
         try
         {
@@ -113,25 +133,11 @@ public partial class EventBus
         }
         catch (Exception e)
         {
-            onDestroyException = e;
+            onDestroyException = new SubscriberOnDestroyException(e)
+                { Bus = this, Subscriber = subscriber };
         }
 
         return true;
-    }
-
-    private readonly WeakReference<EventBus> _weakSelf;
-
-    private ConcurrentPriorityQueue<Event, GameTick> _eventDelayQueue = new();
-    private ConcurrentPriorityQueue<Event, GameTick> _eventAliveQueue = new();
-
-    private readonly ConcurrentDictionary<Type, HashSet<WeakReference<ISubscriber>>> _weakSubscriberDic = new();
-
-    private readonly ConcurrentHashSet<ISubscriber> _subscriberStrongRefSet =
-        new(ReferenceComparer<ISubscriber>.Instance);
-
-    public partial EventBus()
-    {
-        _weakSelf = new WeakReference<EventBus>(this);
     }
 
     private void PushEventToAliveQueue<TEvent>(TEvent @event)
@@ -149,7 +155,9 @@ public partial class EventBus
     }
 
     private static HashSet<WeakReference<ISubscriber>> GetEmptyWeakSubscriberSet()
-        => new(WeakReferenceTargetRefComparer<ISubscriber>.Instance);
+    {
+        return new HashSet<WeakReference<ISubscriber>>(WeakReferenceTargetRefComparer<ISubscriber>.Instance);
+    }
 
     private void AddSubscriberToWeakSubscriberDic(WeakReference<ISubscriber> weakSubscriber, Type eventType)
     {
@@ -162,141 +170,19 @@ public partial class EventBus
         value.Add(weakSubscriber);
     }
 
-    private record struct CheckAliveExceptionPair(Exception? OnCheckAliveException, Exception? OnDestroyException)
+    public partial bool TryLoopOnce(GameTick nowTick,
+        [NotNullWhen(false)] out List<SubscriberInnerException>? subscriberInnerExceptions)
     {
-        public readonly bool IsEmpty() => OnDestroyException is null && OnCheckAliveException is null;
-    }
-
-    public partial uint DefaultMaxPushEventCount
-    {
-        get;
-        set => field = value > 0
-            ? value
-            : throw new ArgumentOutOfRangeException(nameof(value), $"{nameof(value)} must be greater than 0");
-    }
-
-    public partial long SubscriberCount
-    {
-        get
-        {
-            long count = 0;
-            foreach (var (_, weakSet) in _weakSubscriberDic)
-            {
-                count += weakSet.Count;
-            }
-
-            return count;
-        }
-    }
-
-    public partial EventCountSetting EventCount => new(_eventDelayQueue.Count, _eventAliveQueue.Count);
-
-    public partial record struct OnLoopExceptionSettings
-    {
-        public readonly partial bool IsEmpty()
-        {
-            return
-                (OnCheckAliveExceptions is null || OnCheckAliveExceptions.Count <= 0)
-                && (OnHandleExceptions is null || OnHandleExceptions.Count <= 0)
-                && (OnDestroyExceptions is null || OnDestroyExceptions.Count <= 0);
-        }
-
-        public partial bool TryGetOnCheckAliveExceptions(out List<SubscriberTokenExceptionPair>? onCheckAliveExceptions)
-        {
-            if (OnCheckAliveExceptions is { Count: > 0 })
-            {
-                onCheckAliveExceptions = OnCheckAliveExceptions;
-                return true;
-            }
-
-            onCheckAliveExceptions = null;
-            return false;
-        }
-
-        public partial bool TryGetOnHandleExceptions(out List<SubscriberTokenExceptionPair>? onHandleExceptions)
-        {
-            if (OnHandleExceptions is { Count: > 0 })
-            {
-                onHandleExceptions = OnHandleExceptions;
-                return true;
-            }
-
-            onHandleExceptions = null;
-            return false;
-        }
-
-        public partial bool TryGetOnDestroyExceptions(out List<SubscriberTokenExceptionPair>? onDestroyExceptions)
-        {
-            if (OnDestroyExceptions is { Count: > 0 })
-            {
-                onDestroyExceptions = OnDestroyExceptions;
-                return true;
-            }
-
-            onDestroyExceptions = null;
-            return false;
-        }
-
-        public partial void AddOnCheckAliveException(SubscriberTokenExceptionPair exceptionPair)
-        {
-            OnCheckAliveExceptions ??= [];
-            OnCheckAliveExceptions.Add(exceptionPair);
-        }
-
-        public partial void AddOnHandleException(SubscriberTokenExceptionPair exceptionPair)
-        {
-            OnHandleExceptions ??= [];
-            OnHandleExceptions.Add(exceptionPair);
-        }
-
-        public partial void AddOnDestroyException(SubscriberTokenExceptionPair exceptionPair)
-        {
-            OnDestroyExceptions ??= [];
-            OnDestroyExceptions.Add(exceptionPair);
-        }
-
-        public partial void AddRangeOnCheckAliveExceptions(List<SubscriberTokenExceptionPair>? exceptionPairs)
-        {
-            if (exceptionPairs is null || exceptionPairs.Count <= 0)
-            {
-                return;
-            }
-
-            OnCheckAliveExceptions ??= [];
-            OnCheckAliveExceptions.AddRange(exceptionPairs);
-        }
-
-        public partial void AddRangeOnHandleExceptions(List<SubscriberTokenExceptionPair>? exceptionPairs)
-        {
-            if (exceptionPairs is null || exceptionPairs.Count <= 0)
-            {
-                return;
-            }
-
-            OnHandleExceptions ??= [];
-            OnHandleExceptions.AddRange(exceptionPairs);
-        }
-
-        public partial void AddRangeOnDestroyExceptions(List<SubscriberTokenExceptionPair>? exceptionPairs)
-        {
-            if (exceptionPairs is null || exceptionPairs.Count <= 0)
-            {
-                return;
-            }
-
-            OnDestroyExceptions ??= [];
-            OnDestroyExceptions.AddRange(exceptionPairs);
-        }
-    }
-
-    public partial bool TryLoopOnce(GameTick nowTick, out OnLoopExceptionSettings? onLoopExceptions)
-    {
-        return LoopOnceHelper.TryLoopOnce(nowTick, this, out onLoopExceptions);
+        return LoopOnceHelper.TryLoopOnce(nowTick, this, out subscriberInnerExceptions);
     }
 
     public partial void DisposeSubscriber(ISubscriber subscriber)
     {
-        throw new NotImplementedException();
+        TryRemoveSubscriber(subscriber, out var onDestroyException);
+        if (onDestroyException is not null)
+        {
+            UnhandledException.Add(onDestroyException);
+        }
     }
 }
 
@@ -320,64 +206,54 @@ public partial class EventBus
 {
     private class LoopOnceHelper(GameTick nowTick, EventBus eventBus)
     {
+        private readonly List<SubscriberInnerException> _exceptions = [];
+
         /// <summary>
-        /// Attempts to execute a single event loop iteration, recording any exceptions that occur.
+        ///     Attempts to execute a single event loop iteration, recording any exceptions that occur.
         /// </summary>
         /// <param name="nowTick">The current game tick at which to process events.</param>
         /// <param name="eventBus">The event bus instance on which to run the loop.</param>
-        /// <param name="exceptions">When this method returns <c>false</c>, contains the collected exceptions; otherwise, <c>null</c>.</param>
+        /// <param name="exceptions">
+        ///     When this method returns <c>false</c>, contains the collected exceptions; otherwise,
+        ///     <c>null</c>.
+        /// </param>
         /// <returns>
-        /// <c>true</c> if the loop iteration completed without exceptions; otherwise, <c>false</c>.
+        ///     <c>true</c> if the loop iteration completed without exceptions; otherwise, <c>false</c>.
         /// </returns>
         public static bool TryLoopOnce(GameTick nowTick, EventBus eventBus,
-            [NotNullWhen(false)] out OnLoopExceptionSettings? exceptions)
+            [NotNullWhen(false)] out List<SubscriberInnerException>? exceptions)
         {
             var helper = new LoopOnceHelper(nowTick, eventBus);
             helper.LoopOnce();
 
-            if (helper._exceptions.IsEmpty())
+            if (helper._exceptions.Count <= 0)
             {
                 exceptions = null;
                 return true;
             }
-            else
-            {
-                exceptions = helper._exceptions;
-                return false;
-            }
+
+            exceptions = helper._exceptions;
+            return false;
         }
-
-        private GameTick _nowTick = nowTick;
-        private EventBus _busInstance = eventBus;
-
-        private OnLoopExceptionSettings _exceptions = new()
-        {
-            OnCheckAliveExceptions = [],
-            OnDestroyExceptions = [],
-            OnHandleExceptions = [],
-        };
 
         private void LoopOnce()
         {
             CheckAliveStatus();
             UpdateDelayQueue();
-            PushEventsToSubscribers(); //todo MaxProcess
-
+            PushEventsToSubscribers();
+            ForcePushEventsInDeadlineToSubscribers();
 
             ClearWeakSubscribers();
         }
 
         private void ClearWeakSubscribers()
         {
-            var weakDic = _busInstance._weakSubscriberDic;
-            foreach (var (_, weakSet) in weakDic)
-            {
-                weakSet.RemoveWhere(weak => !weak.TryGetTarget(out _));
-            }
+            var weakDic = eventBus._weakSubscriberDic;
+            foreach (var (_, weakSet) in weakDic) weakSet.RemoveWhere(weak => !weak.TryGetTarget(out _));
         }
 
         private bool TryRemoveSubscribers(List<ISubscriber> subscribers,
-            [NotNullWhen(false)] out List<SubscriberTokenExceptionPair>? onDestroyExceptions)
+            [NotNullWhen(false)] out List<SubscriberOnDestroyException>? onDestroyExceptions)
         {
             if (subscribers.Count <= 0)
             {
@@ -388,65 +264,50 @@ public partial class EventBus
             onDestroyExceptions = [];
             foreach (var subscriber in subscribers)
             {
-                _busInstance.TryRemoveSubscriber(subscriber, out var onDestroyException);
-                if (onDestroyException is null)
-                {
-                    continue;
-                }
+                eventBus.TryRemoveSubscriber(subscriber, out var onDestroyException);
+                if (onDestroyException is null) continue;
 
-                onDestroyExceptions.Add(new(new(_busInstance, subscriber), onDestroyException));
+                onDestroyExceptions.Add(new SubscriberOnDestroyException(onDestroyException)
+                    { Bus = eventBus, Subscriber = subscriber });
             }
 
-            if (onDestroyExceptions.Count <= 0)
-            {
-                onDestroyExceptions = null;
-                return true;
-            }
-            else
+            if (onDestroyExceptions.Count > 0)
             {
                 return false;
             }
+
+            onDestroyExceptions = null;
+            return true;
         }
 
         private void CheckAliveStatus()
         {
             var removeList = new List<ISubscriber>();
 
-            foreach (var subscriber in _busInstance._subscriberStrongRefSet)
+            foreach (var subscriber in eventBus._subscriberStrongRefSet)
             {
-                if (subscriber is not IAliveCheckable aliveChecker)
-                {
-                    continue;
-                }
+                if (subscriber is not IAliveCheckable aliveChecker) continue;
 
                 try
                 {
-                    if (aliveChecker.CheckAlive(_nowTick) == AliveStatus.Dead)
-                    {
-                        removeList.Add(subscriber);
-                    }
+                    if (aliveChecker.CheckAlive(nowTick) == AliveStatus.Dead) removeList.Add(subscriber);
                 }
                 catch (Exception onCheckAliveException)
                 {
-                    _exceptions.AddOnCheckAliveException(new SubscriberTokenExceptionPair(
-                        new SubscriberToken(_busInstance, subscriber),
-                        onCheckAliveException)
-                    );
+                    _exceptions.Add(new SubscriberOnCheckAliveException(onCheckAliveException)
+                        { Bus = eventBus, Subscriber = subscriber });
                 }
             }
 
-            if (!TryRemoveSubscribers(removeList, out var exceptionPairs))
-            {
-                _exceptions.AddRangeOnCheckAliveExceptions(exceptionPairs);
-            }
+            if (!TryRemoveSubscribers(removeList, out var exceptions)) _exceptions.AddRange(exceptions);
         }
 
         private void UpdateDelayQueue()
         {
-            var delayQueue = _busInstance._eventDelayQueue;
-            var aliveQueue = _busInstance._eventAliveQueue;
+            var delayQueue = eventBus._eventDelayQueue;
+            var aliveQueue = eventBus._eventAliveQueue;
 
-            while (delayQueue.Peek().TryGetValue(out var delayEvent) && delayEvent.Priority >= _nowTick)
+            while (delayQueue.Peek().TryGetValue(out var delayEvent) && delayEvent.Priority >= nowTick)
             {
                 var newDeadline = delayEvent.CreateTime + delayEvent.PushDelay + delayEvent.MaxDelay;
                 aliveQueue.Enqueue(delayEvent with { Priority = newDeadline });
@@ -455,33 +316,37 @@ public partial class EventBus
 
         private void PushEventsToSubscribers()
         {
-            var aliveQueue = _busInstance._eventAliveQueue;
+            var aliveQueue = eventBus._eventAliveQueue;
+            var maxProcessCount = eventBus.DefaultMaxPushEventCount;
 
-            while (aliveQueue.Peek().TryGetValue(out var @event))
+            var i = 0;
+            while (i < maxProcessCount && aliveQueue.Peek().TryGetValue(out var @event))
             {
+                i++;
                 PushOneEventToSubscribers(@event);
             }
         }
 
         private void ForcePushEventsInDeadlineToSubscribers()
         {
-            throw new NotImplementedException();
+            var eventQueue = eventBus._eventAliveQueue;
+
+            while (eventQueue.Peek().TryGetValue(out var @event)
+                   && @event.Priority > nowTick)
+            {
+                eventQueue.Dequeue();
+                PushOneEventToSubscribers(@event);
+            }
         }
 
         private void PushOneEventToSubscribers(Event @event)
         {
-            if (!_busInstance._weakSubscriberDic.TryGetValue(@event.GetType(), out var weakSet) || weakSet.Count <= 0)
-            {
-                return;
-            }
+            if (!eventBus._weakSubscriberDic.TryGetValue(@event.GetType(), out var weakSet) || weakSet.Count <= 0) return;
 
             var removeList = new List<ISubscriber>();
             foreach (var weakSubscriber in weakSet)
             {
-                if (!weakSubscriber.TryGetTarget(out var subscriber))
-                {
-                    continue;
-                }
+                if (!weakSubscriber.TryGetTarget(out var subscriber)) continue;
 
                 try
                 {
@@ -492,22 +357,16 @@ public partial class EventBus
                     }
 
                     var result = subscriber.HandelI(@event)!;
-                    if (result == AliveStatus.Dead)
-                    {
-                        removeList.Add(subscriber);
-                    }
+                    if (result == AliveStatus.Dead) removeList.Add(subscriber);
                 }
-                catch (Exception e)
+                catch (Exception onHandleException)
                 {
-                    _exceptions.AddOnHandleException(new SubscriberTokenExceptionPair(
-                        new SubscriberToken(_busInstance, subscriber), e));
+                    _exceptions.Add(new SubscriberOnHandleException(onHandleException)
+                        { Bus = eventBus, Subscriber = subscriber });
                 }
             }
 
-            if (!TryRemoveSubscribers(removeList, out var onDestroyExceptions))
-            {
-                _exceptions.AddRangeOnDestroyExceptions(onDestroyExceptions);
-            }
+            if (!TryRemoveSubscribers(removeList, out var onDestroyExceptions)) _exceptions.AddRange(onDestroyExceptions);
         }
     }
 }

@@ -1,5 +1,4 @@
-﻿using EventBusLib.Core;
-using EventBusLib.Dependencies;
+﻿using EventBusLib.Dependencies;
 
 namespace EventBusLib.Extensions;
 

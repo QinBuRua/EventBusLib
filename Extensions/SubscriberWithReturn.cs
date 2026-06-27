@@ -4,8 +4,6 @@ namespace EventBusLib.Extensions;
 
 public abstract class SubscriberWithReturn<TEvent> : ISubscriber, IManaged
 {
-    public abstract AliveStatus Handle(TEvent @event);
-
     public AliveStatus? HandelI(Event @event)
     {
         return @event is not TEvent tEvent
@@ -13,7 +11,15 @@ public abstract class SubscriberWithReturn<TEvent> : ISubscriber, IManaged
             : Handle(tEvent);
     }
 
-    public Type GetEventType() => typeof(TEvent);
+    public Type GetEventType()
+    {
+        return typeof(TEvent);
+    }
 
-    public bool HasReturn() => true;
+    public bool HasReturn()
+    {
+        return true;
+    }
+
+    public abstract AliveStatus Handle(TEvent @event);
 }

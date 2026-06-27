@@ -6,8 +6,12 @@ namespace EventBusLib.Utils;
 public class ReferenceEqualityComparer<T> : IEqualityComparer<T>
 {
     public bool Equals(T? x, T? y)
-        => ReferenceEquals(x, y);
+    {
+        return ReferenceEquals(x, y);
+    }
 
     public int GetHashCode([DisallowNull] T obj)
-        => RuntimeHelpers.GetHashCode(obj);
+    {
+        return RuntimeHelpers.GetHashCode(obj);
+    }
 }
